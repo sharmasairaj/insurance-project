@@ -1,48 +1,65 @@
-node{
-    
-    stage('checkout'){
-        git 'https://github.com/shubhamkushwah123/insurance-project-demo.git'
-    }
-    
-    stage('maven build'){
-        sh 'mvn clean package'
-    }
-    
-    stage('containerize'){
-      //  sh 'docker build -t shubhamkushwah123/insure-me:1.0 .'
-    }
-    
-    stage('Release'){
-        withCredentials([string(credentialsId: 'dockerHubPwd', variable: 'dockerHubPwd')]) {
-      //  sh "docker login -u shubhamkushwah123 -p ${dockerHubPwd}"
-     //   sh 'docker push shubhamkushwah123/insure-me:1.0'
-        }
-    }
-    
-    stage('Deploy to Test'){
-     ansiblePlaybook become: true, credentialsId: 'ansible-key', disableHostKeyChecking: true, installation: 'ansible', inventory: '/etc/ansible/hosts', playbook: 'configure-test-server.yml', vaultTmpPath: ''
-    }
-    
-    stage('checkout regression test source code'){
-        git 'https://github.com/shubhamkushwah123/my-selenium-test-app.git'
-    }
-    
-    stage('build test scripts'){
-        sh 'mvn clean package assembly:single'
-    }
-    
-    stage('execute selenium test script'){
-        sh 'java -jar target/my-app-test-0.0.1-SNAPSHOT-jar-with-dependencies.jar'
+pipeline {
+    agent any
+
+    tools {
+        jdk 'JDK17'     
+        maven 'Maven3'  
     }
 
-    stage('checkout'){
-        git 'https://github.com/shubhamkushwah123/insurance-project-demo.git'
+    environment {
+        DOCKER_IMAGE = 'sairajsharma/finance:latest'
     }
-    
-     stage('Deploy to Test'){
-     ansiblePlaybook become: true, credentialsId: 'ansible-key', disableHostKeyChecking: true, installation: 'ansible', inventory: '/etc/ansible/hosts', playbook: 'configure-prod-server.yml', vaultTmpPath: ''
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/sharmasairaj/finance-Project.git'
+            }
+        }
+
+        stage('Compile') {
+            steps {
+                sh 'mvn clean compile install'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+
+        stage('Package') {
+            steps {
+                sh 'mvn package'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE} ."
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: '410ab98a-4945-49dc-b8c0-f9066ec7e97f', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                        sh "docker push ${DOCKER_IMAGE}"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                script {
+                    sh "docker run -d --name finance-container -p 8081:8080 ${DOCKER_IMAGE}"
+                }
+            }
+        }
     }
-    
-    
-    
 }
